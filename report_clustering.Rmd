@@ -609,7 +609,7 @@ $$
 \end{enumerate}
 
 
-The expectation step in the EM algorithm is equivalent to the first step of the k-means algorithm, in that we re-assess the previously formed clusters using the estimated cluster centers. Instead of assigning each data point to the best-matching cluster, we compute the posterior expectation. In the maximization step, the cluster centers $\mu_k$, along with the other parameters, are computed based on the new clustersI.
+The expectation step in the EM algorithm is equivalent to the first step of the k-means algorithm, in that we re-assess the previously formed clusters using the estimated cluster centers. Instead of assigning each data point to the best-matching cluster, we compute the posterior expectation. In the maximization step, the cluster centers $\mu_k$, along with the other parameters, are computed based on the new clusters.
 
 \begin{algorithm}[H]
 \caption{Expectation-Maximization}
@@ -746,11 +746,11 @@ $$
 
 where $|C_k|$ is the number of samples in cluster $C_k$.
 
-In this example, we consider an agglomerative clustering algorithm based on complete linkage and use the Euclidean distance as a dissimilarity measure.
-
 \end{enumerate}
 
-The code chunk below performs agglomerative hierarchical clustering with the function \texttt{hclust}, using complete linkage. The function \texttt{cutree} is used to cut the dendogram so as to produce $K = 3$ clusters. Figure \ref{hier} shows the cluster dendogram and the resulting clusters for $k = 3$, while Figure \ref{hier_pca} shows the clusters with respect to PCA. 
+In this example, we consider an agglomerative clustering algorithm based on complete linkage and use the Euclidean distance as a dissimilarity measure.
+
+The code chunk below performs agglomerative hierarchical clustering with the function \texttt{hclust}, using complete linkage. The function \texttt{cutree} is used to cut the dendogram so as to produce $K = 3$ clusters. Figure \ref{hier} shows the cluster dendogram and the resulting clusters, while Figure \ref{hier_pca} shows the clusters with respect to PCA. 
 
 \begin{algorithm}[H]
 \caption{Agglomerative hierarchical clustering}
@@ -849,14 +849,14 @@ kable_styling(full_width = F,
 
 The results of a clustering algorithm can be evaluated based on the following criteria: 
 
-* External criteria: a pre-specified structure, such as a set of data labels
-* Internal criteria: the characteristics of the clustered data themselves or a comparison between different clusters
-* Relative criteria: different clustering algorithms
+* External criteria: comparison with a pre-specified structure, such as a set of labels;
+* Internal criteria: the evaluation is based on the characteristics of the clustered data themselves or on a comparison between different clusters;
+* Relative criteria: comparison between different clustering algorithms.
 
 The data is well classified if the clusters have the following properties: 
 
-* Compactness: the data belonging to a cluster are as close as possible (small within-cluster dissimilarity)
-* Separation: the data belonging to different clusters are as far apart as possible (large between-cluster dissimilarity)
+* Compactness: the samples belonging to a cluster are as close as possible (small within-cluster dissimilarity)
+* Separation: the samples belonging to different clusters are as far apart as possible (large between-cluster dissimilarity)
 
 Due to the absence of unambiguous labels, in this exercise we will focus mainly on internal evaluation criteria. 
 
