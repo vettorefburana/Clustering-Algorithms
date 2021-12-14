@@ -1,0 +1,995 @@
+---
+title: 'A comparison of clustering algorithms'
+author: "Verena Brufatto"
+date: \today
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_height: 5
+    fig_width: 5
+    latex_engine: xelatex
+    toc: no
+    toc_depth: 2
+    number_sections: true
+  word_document:
+    
+    toc: yes
+  theme: readable
+  highlight: tango
+  graphics: yes
+header-includes:
+- \usepackage{hyperref}
+- \urlstyle{same}
+- \usepackage{eurosym}
+- \usepackage{float}
+- \usepackage{amsmath}
+- \floatplacement{figure}{H}
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{array}
+- \usepackage{multirow}
+- \usepackage{tabu}
+- \newtheorem{theorem}{Theorem}
+- \usepackage[shortlabels]{enumitem}
+- \usepackage{algorithm}
+- \usepackage{algorithmic}
+- \usepackage{bbm}
+- \usepackage{threeparttable}
+- \usepackage{threeparttablex}
+- \usepackage[normalem]{ulem}
+- \usepackage{makecell}
+- \usepackage[labelfont=bf, font=large]{caption}
+- \usepackage{footnote}
+- \captionsetup[figure]{belowskip=2pt, aboveskip=-12pt}
+- \captionsetup[table]{textfont=bf}
+- \usepackage[fontsize=13pt]{scrextend}
+- \DeclareCaptionType[fileext=los,placement={!h}]{scheme} 
+- \renewcommand{\schemename}{Figure}
+- \DeclareCaptionType[fileext=los,placement={!ht}]{troll} 
+- \setlength{\intextsep}{10pt plus 2pt minus 2pt}
+- \floatplacement{scheme}{H}
+- \captionsetup[scheme]{belowskip=2pt, aboveskip=-12pt}
+classoption: table
+---
+
+```{r setup, include=FALSE}
+
+chooseCRANmirror(graphics=FALSE, ind=1)
+knitr::opts_chunk$set(echo = TRUE, fig.pos= "h")
+.libPaths(new = "/packages")
+
+library(ggcorrplot)
+library(MASS)
+library(keras)
+library(NeuralNetTools)
+library(kableExtra)
+library(fpc)
+library(Hmisc)
+library(factoextra)
+
+### parameters ######
+set.seed(123)
+
+options(warn=-1)
+
+parm <- list(oma = c(0.3, 0, 0, 0), mar=c(5.1, 3.1, 4.1, 3.1))
+
+```
+
+```{r load_data, include=FALSE}
+
+load("./clustering.RData")
+
+```
+
+\pdfbookmark{Dedication}{dedication}
+\thispagestyle{empty}
+\begin{flushright}
+   \emph{To Elide}
+\end{flushright}
+
+\tableofcontents
+
+\newpage
+
+
+# Introduction
+
+The purpose of this exercise is to implement and compare different clustering techniques, which are aimed at partitioning the data $X \in \mathbb{R}^q$ into $K$ homogeneous clusters. The homogeneity of the clusters is measured by a dissimilarity function which is the objective function to minimize in order to find the optimal clusters. Clustering techniques belong to the class of unsupervised learning methods, since they are based solely on the features of the data and do not take into consideration the response variable. 
+
+The clustering techniques are applied to the Boston Housing dataset, which is composed of 506 observations of real estate market data collected in Boston, Massacchusetts, in 1978. 
+
+We implement two centroid-based (K-means and K-medoids) and one distribution-based (Gaussian mixture models) clustering techniques, which require the number of clusters to be specified as a hyperparameter. Furthermore, we implement an agglomerative hierarchical clustering algorithm, which recursively merges clusters into bigger clusters and does not require to choose the number of clusters *a priori*. The selected techniques are evaluated based on how well they are able to classify houses with a high market price as well as on criteria that measure cluster homogeneity. 
+
+
+# Data pre-processing
+
+Out of the 14 features of the original Boston Housing dataset, we consider only the following:
+
+* *nox*:	nitric oxides concentration (parts per 10 million)
+* *rm*:	average number of rooms per dwelling
+* *tax*:	full-value property-tax rate per USD 10,000
+* *ptratio*:	pupil-teacher ratio by town school district
+* *lstat*:	percentage of lower status of the population
+* *medv*:	median value of owner-occupied homes in USD 1000's (target variable)
+
+The features have been chosen based on their correlation with the target variabile medv (Table \ref{tab:corr}).
+
+As in the original paper (Harrison and Rubinfeld (1978)), we apply a logarithmic transformation to the variables *medv* and *lstat* and a quadratic transformation to the variables *nox* and *rm*.
+
+Figure \ref{medv} shows the histogram and boxplot of the median value of houses. The distribution has positive skewness, a mean value of about 23 thousand USD, a median value of 21 thousand USD and is capped at 50 thousand USD. All values above 39 thousand USD are considered outliers, since they make up for only 7% of all observed house prices. For the purpose of this analysis, we label house prices above the 90th percentile, which corresponds to 35 thousand USD, as "expensive" (Table \ref{tab:desc}).
+
+``````{r corr, echo = FALSE, results='asis'}
+
+
+table =  round( cor(db_sel), 2 )
+
+knitr::kable(table,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "Feature correlation",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+
+\vspace{1cm}
+
+``````{r desc, echo = FALSE, results='asis'}
+
+
+table = percentiles$counts[!names(percentiles$counts) %in% c("Info", "Gmd")]
+
+knitr::kable(t(table),
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=F,
+             linesep="",
+             caption = "Descriptive statistics",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+\vspace{1cm}
+
+\begin{scheme}
+\caption{\textbf{Median house value}}
+\label{medv}
+```{r medv, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+hist(boston$medv, xlab = "medv", main = "Histogram of medv")
+
+boxplot(boston$medv, main = "Boxplot of medv")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+\newpage
+
+# K-means clustering 
+
+K-means is a centroid-based clustering algorithm that partitions the data $x_i \in X$, $i = 1,...,n = 506$ into $K$ disjoint clusters $(C_1, ..., C_K)$
+
+$$
+C_k = \{x \in \mathbb{R}^q; C_K(x) = k \}, \forall k \in K
+$$
+so that 
+
+$$
+\bigcup_{k = 1}^K C_k = \mathbb{R}^q \hspace{1cm} \text{and}  \hspace{1cm} C_k \cap C_l = \varnothing, \forall k \neq l
+$$
+The number of clusters $K$ is a hyperparameter that must be chosen *a priori*, while the clusters are built so that the dissimilarity of the elements belonging to each cluster $C_k$ is minimal. 
+
+The dissimilarity function chosen is the squared Euclidean distance on $\mathbb{R}^q$
+
+$$
+d(x, x') = ||x' - x ||^2_2 = \sum_{j = 1}^q (x'_j - x_j)^2
+$$
+The clusters are obtained by minimizing the total within cluster dissimilarity (TWCD)
+
+$$
+\underset{(C_1, ..., C_K)}{arg min} \sum_{k = 1}^{K} \sum_{x_i \in C_k \cap X} d(\mu_k, x_i) = \underset{(C_1, ..., C_K)}{arg min} \sum_{k = 1}^{K} \sum_{x_i \in C_k \cap X} ||\mu_k - x_i ||^2_2
+$$
+where $X = \{x_1, ..., x_n \}$ and $\mu_k$ is the sample mean over a single cluster $C_k$, which is also called cluster center or centroid
+
+$$
+\mu_k = \frac{1}{| \{ x_i \in C_k \cap X \} |} \sum_{x_i \in C_k \cap X } x_i \in \mathbb{R}^q
+$$
+
+For a single cluster $C_k$, the sample mean $\mu_k$ minimizes the within-cluster dissimilarity $D(C_k, \mu)$ 
+
+$$
+\mu_k = \underset{\mu \in \mathbb{R}^q}{argmin} \hspace{0.5cm} D(C_k, \mu) = \underset{\mu \in \mathbb{R}^q}{argmin} \sum_{x_i \in C_k \cap X} ||\mu - x_i ||^2_2
+$$
+
+where 
+
+$$
+D(C_k, \mu_k) = \sum_{x_i \in C_k \cap X} ||\mu_k - x_i ||^2_2
+$$
+Hence, the total within-cluster dissimilarity is minimized by computing the optimal clusters $(C_1, ..., C_K)$
+
+$$
+\underset{(C_1, ...,C_K)}{arg min} \sum_{k = 1}^{K} D(C_k, \mu_k)
+$$
+Algorithm \ref{kmeans} performs K-means clustering for features $X = \{x_1, ..., x_n \}$ and converges to a local minimum. Convergence is ensured due to the fact that each iteration reduces the total within-cluster dissimilarity. 
+
+Step \ref{step1} of the algorithm computes the optimal sample means $\mu_k^{t-1}$ with respect to the dissimilarity measure, while step \ref{step2} updates the centroids with respect to the new clusters $C_K^t$. 
+
+The objective function, i.e. the within-cluster dissimilarity, decreases with each iteration while having a lower bound of zero, hence ensuring convergence. In order to avoid local minima, the initial classifier $C_K^0$ can be randomly restarted in the first step of the algorithm.
+
+\begin{algorithm}[H]
+\caption{K-Means clustering}
+\label{kmeans}
+
+\begin{enumerate}
+
+\item Choose an initial clustering classifier $C^0_K: X \rightarrow K$ with sample means $\mu_k^0$, $k \in K$.
+
+\item Repeat for $t \geq 1$ until there are no further changes: 
+
+\begin{enumerate}
+
+\item given the current sample means $\mu_k^{t-1}$ choose the classifier $C_K^t: X \rightarrow K$ so that for each $x_i \in X$ \label{step1}
+
+$$
+C_K^t (x_i) = \underset{k \in K}{argmin} || \mu_k^{t-1} - x_i ||^2_2
+$$
+\item calculate the sample means $\mu_k^t$ on $C_k^t$. \label{step2}
+
+\end{enumerate}
+
+\end{enumerate}
+
+\end{algorithm}
+
+The number of clusters $K$ is a hyperparameter that must be chosen *a priori*. To ensure that the total within-cluster dissimilarity is decreasing in $K$, one can start by forming $K = 2$ clusters $C_k$ with sample means $\mu_k$ for $k = 1, 2$. For $K = 3$ the sample means $\mu_1$ and $\mu_2$ can be used as initial values for the algorithm, while $\mu_3 \in \mathbb{R}^q$ can be randomly initialized. The process can then be repeated for the desired number of clusters $K$.
+
+The following chunk of code performs k-means using the \texttt{kmeans} function from the R package \texttt{stats}.
+
+\newpage
+
+\small
+
+```{r , echo=T, warning = F, include=T, results=T, eval = F}
+
+features = dataset[, -which(colnames(dataset) == "medv")] # exclude target variable
+X = scale(features) # normalize features
+
+k_max = 10 # set maximum number of clusters
+dissimilarity = matrix(0, nrow = k_max, ncol = 1) # within-cluster dissimilarity
+clusters = matrix(1, ncol = k_max, nrow = nrow(X)) # clusters
+
+means = colMeans(X) # feature means (zero since normalized)
+dissimilarity[1] = sum(colSums(X^2)) # dissimilarity for 1 cluster
+
+set.seed(123)
+for(k in 2:k_max){
+  # form clusters for k = 2, ..., k_max
+  if(k == 2){
+    # kmeans for 2 clusters
+    k_mean = kmeans(X, k)
+    
+  } else {
+    # kmeans with initial centroid values
+    k_mean = kmeans(X, k_centers)
+  }
+  
+  dissimilarity[k] = sum(k_mean$withins)
+  clusters[, k] = k_mean$cluster
+  k_centers = matrix(0, nrow = k+1, ncol = ncol(X)) # initial centroid values
+  k_centers[1:k, ] = k_mean$centers # centroids for k
+  k_centers[k+1, ] = means # feature means for k+1
+}
+
+```
+
+\normalsize
+
+The k-means algorithm is run for $K = 2, ..., 10$ clusters and, at each iteration, the previous cluster centroids $\mu_k, k \in K,$ are used as initial values for the centroids in the next iteration, so that the total within-cluster dissimilarity decreases in $K$.
+The resulting plot (Figure \ref{elbow}, lhs) can be used to select the optimal number of clusters $K$. In this case, we choose $K = 3$ based on the elbow method. 
+
+``````{r tab_kmeans, echo = FALSE, results='asis'}
+
+
+knitr::kable(table_km,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "K-means",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+
+Table \ref{tab:tab_kmeans} shows the results of k-means with respect the whole sample and to houses with a high market value. Most of the houses belong to cluster 3 (43%) and 90% of the houses with a high market price belong to cluster 2. 
+
+
+\begin{scheme}
+\caption{\textbf{K-means}}
+\label{elbow}
+```{r elbow, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+K = 3
+
+plot(dissimilarity, xlab = "K", type="o", pch = 19, lwd = 2, main = "Total within-cluster dissimilarity")
+abline(v = K, lty = "dashed")
+
+plotcluster(X, clusters[, K], pch = 19,  main = "K-means clusters")
+legend("bottomleft", 
+        paste0("cluster ", seq(1:K)), 
+        col = c("black", "red", "green"),
+        pch = 19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+
+Next, we perform principal component analysis (PCA) with the R function \texttt{prcomp} and extract the first two principal components, which explain about 75% of the total variance in the data.
+
+Let $q \leq n$ be the rank of the feature matrix $X$, so that there are $q$ linearly independent samples $x_i \in X$ that span the whole space $\mathbb{R}^q$. PCA determines an orthonormal basis $z_1, ..., z_p \in \mathbb{R}^p$, with $p \leq q$, so that the $q$-dimensional representation $x_i \in X$ may be replaced by a $p$-dimensional representation while preserving as much of the original variability as possibile. 
+
+\small
+
+```{r , echo=T, warning = F, include=T, results=T, eval = T}
+
+PCA = prcomp(X) # principal component analysis
+dati_pca = cbind( X %*% PCA$rotation[, 1], # 1st and 2nd principal component
+                  X %*% PCA$rotation[, 2] )
+
+summary(PCA)
+
+```
+
+\normalsize
+
+Figure \ref{pca} shows the k-means clusters with respect to the first two and the last two principal components. Considering the first two principal components (lhs), we obtain clusters that are well defined, which indicates that k-means clustering is essentially based on the two principal components that explain most of the variability in the data. In fact, if we consider the two principal components associated with the smallest explained variance, we observe significant overlap among cluster members (rhs).
+
+\begin{scheme}
+\caption{\textbf{K-means vs PCA}}
+\label{pca}
+```{r pca, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+# first two components
+plot(x=dati_pca[, 1], y=dati_pca[, 2],
+     col="black",pch=19,
+     ylab="PC 2", xlab="PC 1",
+     main="First 2 PC", 
+     ylim = c(-4, 4))
+dat0 <- which(clusters[, K] == 2)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="red",pch=19)
+dat0 <- which(clusters[, K] == 3)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="green",pch=19)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+# last two components
+plot(x=dati_pca2[, 1], y=dati_pca2[, 2],
+     col="black",pch=19,
+     ylab="PC 4", xlab="PC 5",
+     main="Last 2 PC", 
+     ylim = c(-4, 4))
+dat0 <- which(clusters[, K] == 3)
+points(x=dati_pca2[dat0, 1], y=dati_pca2[dat0, 2], col="red",pch=19)
+dat0 <- which(clusters[, K] == 2)
+points(x=dati_pca2[dat0, 1], y=dati_pca2[dat0, 2], col="green",pch=19)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+
+# K-medoids clustering
+
+K-medoids clustering is a centroid-based clustering algorithm similar to k-means clustering. The main difference between the two is that k-medoids uses data points (the *medoids*) $x_i$ as cluster centers, whereas k-means uses the sample mean (the *centroid*) of the data $\mu_k$. Furthermore, the k-medoids algorithm supports other dissimilarity functions besides the squared Euclidean distance, which may be more robust (e.g. with respect to ouliers). 
+
+The objective function to be minimized is the following 
+
+$$
+\underset{(c_1,...,c_k) \subset X}{arg min} \sum_{k = 1}^{K} \sum_{x_i \in C_k \cap X} d(c_k, x_i)
+$$
+where $c_k \in X$ are the medoids belonging to the dataset, $d(.,.)$ is a dissimilarity function on $\mathbb{R}^q$ and the clusters are given by 
+
+$$
+C_k = \{x \in X; \hspace{0.5cm} d(c_k, x) < d(c_l, x), \hspace{0.5cm} \forall l \neq k \}
+$$
+Since the medoids belong to the data set, the dissimilarities $d(x_i, x_l), i \neq l$ need to be calculated only once. The resulting dissimilarity matrix can then be directly provided to the algorithm.
+
+In this example, we choose the Manhattan distance as the dissimilarity function
+
+$$
+d(x, x') = \sum_{j = 1}^q |(x'_j - x_j)|
+$$
+
+Algorithm \ref{kmedoids} performs K-medoids clustering for features $X = \{x_1, ..., x_n \}$ and converges to a local minimum (Kaufman-Rousseeuw (1987)). 
+
+\begin{algorithm}[H]
+\caption{K-Medoids clustering}
+\label{kmedoids}
+
+\begin{enumerate}
+
+\item Choose initial medoids $c_1, ..., c_k \in X$ and assign each data point $x_i \in X$ to its closest medoid. Then, calculate the total within-cluster dissimilarity 
+
+$$
+TWDC = \sum_{k = 1}^{K}\sum_{x_i \in C_k \cap X} d(c_k, x_i)
+$$
+
+\item Repeat there is no further decrease in TWDC. For each $c_k$ and for each $x_i$: 
+
+\begin{enumerate}
+
+\item set $x_i$ as the new medoid $c_k$ and allocate each data point to the respective cluster \label{step1}
+
+\item calculate the new TWDC \label{step2}
+
+\item if TWDC decreases accept $x_i$ as the new medoid, otherwise reject the swap.
+
+\end{enumerate}
+
+\end{enumerate}
+
+\end{algorithm}
+
+
+
+The following chunk of code performs k-medoids clustering with $K = 3$ using the R function \texttt{pam} from the package \texttt{cluster}. Since we chose the Manhattan distance as a dissimilarity function, we do not provide a dissimilarity matrix to the algorithm (\texttt{diss = F}), so that the features $X$ are considered only as observations. The parameter \texttt{pamonce = F} corresponds to the original algorithm by Kaufman-Rousseeuw (1987). 
+
+```{r , echo=T, warning = F, include=T, results=T, eval = F}
+
+set.seed(123)
+k_medoid = pam(X, k = 3, metric = "manhattan", diss = F, pamonce = F)
+
+```
+
+
+Figure \ref{kmedoids_clusters} shows the dissimilarity function with respect to $K$, computed with the function \texttt{fviz\_nbclust} of the package \texttt{factoextra} (lhs), and the clusters produces by the k-medoids algorithm (rhs).
+
+Most of the houses belong to cluster 1 (36%) and 88% of the houses with a high market price belong to cluster 1. Hence, the classification error for expensive houses is slighly larger for the k-medoids algorithm compared to k-means (Table \ref{tab:tab_medoids}).
+
+Figure \ref{pca2} shows a comparison of the k-means and k-medoids results with respect to the first two principal components. We observe that, except for the different cluster naming, the two methods yield similar results in terms of clusters. Furthermore, we observe that the cluster centers are closer for k-medoids than for k-means, due to the fact that the Manhattan distance is more flexible with respect to outliers than the Euclidean distance. Lastly, k-medoids clustering appears to produce a higher number of classification errors than k-means, especially with respect to cluster 2.
+
+\begin{scheme}
+\caption{\textbf{K-medoids}}
+\label{kmedoids_clusters}
+```{r kmedoids_clusters, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+K = 3
+
+fviz_nbclust(X,
+  FUNcluster = cluster::pam,
+  barfill = "black",
+  barcolor = "black",
+  linecolor = "black",
+  method = "wss")
+
+plotcluster(X, k_med$clustering,  pch = 19,  main = "K-medoids clusters")
+legend("bottomleft", 
+        paste0("cluster ", seq(1:K)), 
+        col = c("black", "red", "green"),
+        pch = 19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+
+``````{r tab_medoids, echo = FALSE, results='asis'}
+
+knitr::kable(table_kmed,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "K-medoids",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+\begin{scheme}
+\caption{\textbf{K-medoids and K-means vs PCA}}
+\label{pca2}
+```{r pca2, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+# k medoids
+plot(x=dati_pca[, 1], y=dati_pca[, 2],
+     col="black",pch=19,
+     ylab="PC 2", xlab="PC 1",
+     main="K-medoids", 
+     ylim = c(-4, 4))
+dat0 <- which(k_med$clustering == 2)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="red",pch=19)
+dat0 <- which(k_med$clustering == 3)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="green",pch=19)
+points(x=dati_pca[k_med$id.med, 1],y=dati_pca[k_med$id.med,2], col="blue",pch=19, cex=1.5)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+
+# k means
+plot(x=dati_pca[, 1], y=dati_pca[, 2],
+     col="black",pch=19,
+     ylab="PC 2", xlab="PC 1",
+     main="K-means", 
+     ylim = c(-4, 4))
+dat0 <- which(clusters[, K] == 2)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="red",pch=19)
+dat0 <- which(clusters[, K] == 3)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="green",pch=19)
+points(x=km_centroids[, 1],y=km_centroids[, 2], col="blue",pch=19, cex=1.5)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+# Clustering with Gaussian mixture models
+
+Gaussian mixture models (GMM) are distribution-based clustering models that rely on a probabilistic assumption about the data generating process. They can be seen as a probabilistic variant of k-means, which assigns samples to clusters based on probability density rather than distance.
+
+Given the hyperparameter $K \in \mathbb{N}$, we assume that the features $x_i \in X$ follow a multivariate GMM with parameter $\theta = (\mu_k, \Sigma_k, p_k)$, $k \in K$, i.e. they are iid realizations from the density of a weighted sum (mixture) of normal distributions 
+
+$$
+f(x) = \sum_{k = 1}^K \frac{1}{(2\pi |\Sigma_k|)^{q/2}} exp \{ -\frac{1}{2} (x - \mu_k)^T \Sigma_k^{-1} (x - \mu_k) \} p_k
+$$
+
+where $\mu_k \in \mathbb{R}^q$ are the mean vectors, $\Sigma_k \in \mathbb{R}^{q \times q}$ are the covariance matrices and weights $p = (p_1, ..., p_K)$ so that $p_k \geq 0$ and $\sum_{k = 1}^{K} p_k = 1$. In this framework, the cluster centers are given by the Gaussian mean vectors $\mu_k$.
+
+In order to simplfy the optimization problem, we introduce a latent variable $Z = (Z^1,...,Z^K) \in S_K$ which characterizes the Gaussian distribution from which a particular observation $x$ has been sampled. Hence, $Z$ is a $K$-dimensional vector that takes on values between 0 and 1 such that $\sum_{k = 1}^{K} Z_k = 1$. 
+
+The multivariate GMM can be rewritten as
+
+$$
+f(x) = \sum_{z \in S_K} f(x, z)
+$$
+
+so that $(x_i, z_i) \in \mathbb{R}^q \times S_k$, $i = 1, ..., n$ is iid and has joint density 
+
+$$
+f(x,z) = f(x|z)p(z) = \sum_{k = 1}^{K} z^k \frac{1}{(2\pi |\Sigma_k|)^{q/2}} exp \{ -\frac{1}{2} (x - \mu_k)^T \Sigma_k^{-1} (x - \mu_k) \} p_k
+$$
+where $p_k = \mathbb{P}[ Z^k = 1] > 0$, $k \in K$ is the probability that a sample is generated by the $k$-th Gaussian, i.e. belongs to the $k$-th cluster.
+
+The parameter $\theta$ can then be estimated by maximum likelihood. The log-likelihood function for $(x_i, z_i)$ is much more tractable than for $x_i$ and is given by 
+
+$$
+l_{(x_i, z_i)}(\theta) = \sum_{i = 1}^{n} \sum_{k = 1}^{K} z_i^k \hspace{0.1cm} log \hspace{0.1cm} f(x_i| \mu_k, \Sigma_k) + \sum_{i = 1}^{n} \sum_{k = 1}^{K} z_i^k \hspace{0.1cm} log(p_k)
+$$
+
+
+The maximum likelihood estimators (MLE) for the parameters are given by 
+
+$$
+\hat{\mu}_k = \frac{\sum_{i = 1}^{n} z_i^k x_i}{\sum_{i = 1}^{n} z_i^k}
+$$
+
+$$
+\hat{\Sigma}_k = \frac{\sum_{i = 1}^{n} z_i^k (x_i - \hat{\mu}_k)  (x_i - \hat{\mu}_k)^T}{\sum_{i = 1}^{n} z_i^k}
+$$
+and 
+
+$$
+\hat{p}_k = \frac{1}{n} \sum_{i = 1}^{n} z_i^k
+$$
+Since the latent variables $Z_i$ cannot be observed, the GMM model is estimated with the expectation-maximization (EM) algorithm, which consists of two steps: 
+
+\begin{enumerate}
+
+\item Expectation step:  estimate $Z_i$ from $x_i$ and $\hat{\theta}$. Since $Z_i$ is not observable, it is estimated by its posterior expectation given observation $x$
+
+$$
+\hat{Z}^k(\theta|x) = \mathbb{E}[Z^k|x] = p_k(\theta|x) = \mathbb{P}[Z^k = 1|x]
+$$
+\item Maximization step: estimate $\theta$ from $(x_i, \hat{Z}_i)$ by MLE.
+
+\end{enumerate}
+
+
+The expectation step in the EM algorithm is equivalent to the first step of the k-means algorithm, in that we re-assess the previously formed clusters using the estimated cluster centers. Instead of assigning each data point to the best-matching cluster, we compute the posterior expectation. In the maximization step, the cluster centers $\mu_k$, along with the other parameters, are computed based on the new clusters.
+
+\begin{algorithm}[H]
+\caption{Expectation-Maximization}
+\label{kmedoids}
+
+\begin{enumerate}
+
+\item Choose an initial parameter $\theta^0 = (\mu^0_k, \Sigma_k^0, p_k^0), k \in K$
+
+\item Repeat for $t \geq 1$: 
+
+
+\begin{enumerate}
+
+\item Expectation step: given $\theta^{t-1}$, estimate $Z_i$, $i = 1,...,n$ \label{step1}
+
+$$
+\hat{Z}^t_i = \left( p_1(\theta^{t-1}|x_i), ..., p_K(\theta^{t-1}|x_i)   \right)
+$$
+
+\item Maximization step: calculate the MLE for $\theta^t$ based on the observations $(x_i, \hat{Z}_i^t)$ \label{step2}
+
+$$
+\hat{\mu}_k^t = \frac{\sum_{i = 1}^{n} p_k(\theta^{t-1}|x_i) x_i}{\sum_{i = 1}^{n} p_k(\theta^{t-1}|x_i)}
+$$
+
+$$
+\hat{\Sigma}_k = \frac{\sum_{i = 1}^{n} p_k(\theta^{t-1}|x_i) (x_i - \hat{\mu}_k)  (x_i - \hat{\mu}_k)^T}{\sum_{i = 1}^{n} p_k(\theta^{t-1}|x_i)}
+$$
+
+$$
+\hat{p}_k = \frac{1}{n} \sum_{i = 1}^{n} p_k(\theta^{t-1}|x_i)
+$$
+\end{enumerate}
+
+\end{enumerate}
+
+\end{algorithm}
+
+The following code performs GMM clustering using the function \texttt{Mclust} from the package \texttt{mclust} for $K = 3$ clusters. In this example, we estimate a GMM with diagonal covariance matrices $\Sigma_k$ via the argument \texttt{modelNames = "EEI"}. The covariance matrix can be rewritten as 
+
+$$
+\Sigma_k = \lambda_k D_k A_k D_k^T
+$$
+where $\lambda_k$ is a scalar, $D_k$ is an orthogonal matrix of eigenvectors and $A_k$ is a diagonal matrix. Thus, EEI means "equal volumes" $\lambda_k = \lambda$, "equal shapes" $A_k = A$ and the identity matrix as the orientation $D_k = \mathbb{I}$.
+
+```{r , echo=T, warning = F, include=T, results=T, eval = F}
+
+set.seed(123)
+k_gmm = Mclust(X, G = K, modelNames = "EEI")
+
+```
+
+
+Figure \ref{gmm_clusters} shows the clusters obtained with GMM and with respect to the first two principal components. Relative to k-means, GMM clustering appears to have a higher number of classification errors with respect to cluster 2. The majority of samples belong to cluster 2 (51%), while 88% of expensive houses belong to cluster 1. 
+
+\begin{scheme}
+\caption{\textbf{GMM}}
+\label{gmm_clusters}
+```{r gmm_clusters, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+K = 3
+
+plotcluster(X, k_gmm$classification,  pch = 19,  main = "GMM clusters")
+legend("bottomleft", 
+        paste0("cluster ", seq(1:K)), 
+        col = c("black", "red", "green"),
+        pch = 19, bty = "n")
+
+
+plot(x=dati_pca[, 1], y=dati_pca[, 2],
+     col="black",pch=19,
+     ylab="PC 2", xlab="PC 1",
+     main="GMM vs PCA", 
+     ylim = c(-4, 4))
+dat0 <- which(k_gmm$classification == 2)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="red",pch=19)
+dat0 <- which(k_gmm$classification == 3)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="green",pch=19)
+points(x=gmm_centroids[, 1],y=gmm_centroids[, 2], col="blue",pch=19, cex=1.5)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+``````{r tab_gmm, echo = FALSE, results='asis'}
+
+knitr::kable(table_gmm,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "GMM",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+\newpage
+
+# Hierarchical clustering
+
+Hierarchical clustering algorithms do not require to specify the number of clusters $K$ *a priori*, but only to choose an appropriate dissimilarity function for the optimization problem. Hierarchical clustering techniques can be divided into agglomerative (bottom-up) and divisive (bottom-down).  The latter consists of initializing the entire dataset as single cluster and recursively splitting each parent cluster into two daughter clusters. Agglomerative clustering algorithms instead initialize each sample as a cluster (singleton) and recursively merge pairs of clusters based on their similarity. 
+
+The dissimilarity between clusters can be measured by one of the following types of linkage:
+
+\begin{enumerate}
+
+\item \textbf{Single linkage} clustering considers the distance between the closest samples of two clusters $C_k$ and $C_l$, $k \neq l$ as a measure of within-cluster dissimilarity
+
+$$
+\Delta(C_k, C_l) = \underset{x_i \in C_k, x_j \in C_l}{min} d(x_i, x_j)
+$$
+
+where $d(.,.)$ is a generic dissimilarity function such as the Euclidean distance.
+
+\item \textbf{Complete linkage} clustering considers the most dissimilar pair of samples 
+
+$$
+\Delta(C_k, C_l) = \underset{x_i \in C_k, x_j \in C_l}{max} d(x_i, x_j)
+$$
+
+\item \textbf{Group average} clustering uses the average dissimilarity between clusters 
+
+$$
+\Delta (C_k, C_l) = \frac{1}{|C_k| |C_l|} \sum_{x_i \in C_k} \sum_{x_j \in C_l} d(x_i, x_j)
+$$
+
+where $|C_k|$ is the number of samples in cluster $C_k$.
+
+\end{enumerate}
+
+In this example, we consider an agglomerative clustering algorithm based on complete linkage and use the Euclidean distance as a dissimilarity measure.
+
+The code chunk below performs agglomerative hierarchical clustering with the function \texttt{hclust}, using complete linkage. The function \texttt{cutree} is used to cut the dendogram so as to produce $K = 3$ clusters. Figure \ref{hier} shows the cluster dendogram and the resulting clusters, while Figure \ref{hier_pca} shows the clusters with respect to PCA. 
+
+\begin{algorithm}[H]
+\caption{Agglomerative hierarchical clustering}
+\label{hier}
+
+\begin{enumerate}
+
+\item Initialize each sample $x_i \in X$ as a cluster singleton $C_i = {x_i}$ and compute the pairwise dissimilarity matrix $\Delta(C_i, C_j) = d(x_i, x_j), i \neq j$.
+
+\item Repeat for $i = n, n-1, ..., 2$: 
+
+\begin{enumerate}
+
+\item Among the $i$ clusters, merge the two clusters that have the lowest between-cluster dissimilarity $C_{k} = C_i \cup C_j$
+
+\item Compute the new pairwise between-cluster dissimilarity among the $i-1$ remaining clusters 
+
+$$
+\Delta(C_k, C_l) = \underset{x_i \in C_k, x_j \in C_l}{max} d(x_i, x_j), \hspace{0.1cm} k \leq l
+$$
+
+\end{enumerate}
+
+\end{enumerate}
+
+\end{algorithm}
+
+
+```{r , echo=T, warning = F, include=T, results=T, eval = F}
+
+set.seed(123)
+k_hc = hclust(dist(X), method = "complete")
+hc_cluster = cutree(k_hc, k = 3)
+
+```
+
+
+\begin{scheme}
+\caption{\textbf{Hierarchical clustering}}
+\label{hier}
+```{r hier, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+plot(k_hc, labels = F)
+
+plotcluster(X, hc_cluster,  pch = 19,  main = "Hierarchical clusters")
+legend("bottomleft", 
+       paste0("cluster ", seq(1:K)), 
+       col = c("black", "red", "green"),
+       pch = 19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+\begin{scheme}
+\caption{\textbf{Hierarchical clustering vs PCA}}
+\label{hier_pca}
+```{r hier_pca, echo=FALSE, warning = FALSE, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+plot(x=dati_pca[, 1], y=dati_pca[, 2],
+     col="black",pch=19,
+     ylab="PC 2", xlab="PC 1",
+     ylim = c(-4, 4))
+dat0 <- which(hc_cluster == 2)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="red",pch=19)
+dat0 <- which(hc_cluster == 3)
+points(x=dati_pca[dat0, 1], y=dati_pca[dat0, 2], col="green",pch=19)
+legend("bottomleft", paste0("cluster ", seq(1:K)), 
+       col=c("black", "red", "green"), pch=19, bty = "n")
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+Relative to the other methods, hierarchical clustering appears to have a higher number of classification errors with respect to expensive houeses. The algorithm allocates about 50% of expensive houses to cluster 3 and 43% to cluster 1. The clusters are very asimmetrical, with 76% of samples belonging to cluster 2 (Table \ref{tab:tab_hc}). 
+
+``````{r tab_hc, echo = FALSE, results='asis'}
+
+knitr::kable(table_hier,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "Hierarchical clustering",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+
+# Cluster evalutation
+
+The results of a clustering algorithm can be evaluated based on the following criteria: 
+
+* External criteria: comparison with a pre-specified structure, such as a set of labels;
+* Internal criteria: the evaluation is based on the characteristics of the clustered data themselves or on a comparison between different clusters;
+* Relative criteria: comparison between different clustering algorithms.
+
+The data is well classified if the clusters have the following properties: 
+
+* Compactness: the samples belonging to a cluster are as close as possible (small within-cluster dissimilarity)
+* Separation: the samples belonging to different clusters are as far apart as possible (large between-cluster dissimilarity)
+
+Due to the absence of unambiguous labels, in this exercise we will focus mainly on internal evaluation criteria. 
+
+## Dunn index
+
+The distance between clusters $C_k$ and $C_l$, $k \neq l$ is measured by the distance between their closest points
+
+$$
+d(C_k, C_l) = \underset{x_i \in C_k, x_j \in C_l}{min} || x_i - x_j ||
+$$
+
+The minimal distance between samples of different clusters is the smallest distance $d(C_k, C_l)$
+
+$$
+d_{min} = \underset{k \neq l}{min} \hspace{0.2cm}  d(C_k, C_l)
+$$
+
+The diameter of the cluster is defined as the largest distance between two samples of the cluster. For a generic cluster $C_k$, the diameter is given by 
+
+$$
+D_k = \underset{x_i, x_j \in C_k, i \neq j}{max} ||x_i - x_j ||
+$$
+
+The maximal within-cluster distance is the largest distance $D_k$
+
+$$
+d_{max} = \underset{1 \leq k \leq K}{max} D_k
+$$
+
+The Dunn index is given by the ratio of the smallest between-cluster distance (separation) and the largest within-cluster distance (diameter)
+
+$$
+D_K = \frac{d_{min}}{d_{max}}
+$$
+
+The higher the Dunn index, the better the samples are classified. Table \ref{tab:dunn} shows a comparison of the Dunn index and a Dunn-like index computed as the ratio between the minimum average between-cluster dissimilarity and maximum average within-cluster dissimilarity. The indices are computed with the function \texttt{cluster.stats} from the package \texttt{fpc}. For the Dunn index, hierarchical clustering has the highest score, while for the Dunn-like index, GMM clustering has the highest score.
+
+``````{r dunn, echo = FALSE, results='asis'}
+
+
+table = rbind( cbind(stats_km$dunn, stats_kmed$dunn, stats_gmm$dunn, stats_hc$dunn), 
+        cbind(stats_km$dunn2, stats_kmed$dunn2, stats_gmm$dunn2, stats_hc$dunn2))
+
+table = round(table, 2)
+colnames(table) = c("K-means", "K-medoids", "GMM", "Hierarchical")
+rownames(table) = c("Dunn index", "Dunn-like index")
+
+knitr::kable(table,
+             format="latex",
+             align="r",
+             booktabs = T,
+             row.names=T,
+             linesep="",
+             caption = "Dunn index",
+             longtable=T) %>%
+  
+kable_styling(full_width = F,
+              font_size=12)  
+
+
+```
+
+## Silhouette score
+
+The silhouette score measures the classification error of the clustering algorithm using any distance metric. Its value ranges from -1 to 1 and measures how similar a sample is to its own cluster compared to other clusters. 
+
+The mean distance between a sample $x_i \in C_k$ and all other samples in the cluster is given by 
+
+$$
+a(x_i) = \frac{1}{|C_k| - 1} \sum_{x_j \in C_k, i \neq j} d(x_i, x_j)
+$$
+
+where $|C_k|$ is the number of samples belonging to cluster $k$. A sample $x_i$ is well classified if $a(x_i)$ is small and if the mean distance between $x_i \in C_k$ and any other cluster $C_l, k \neq l$ is small
+
+$$
+b(x_i) = \underset{k \neq l}{min} \frac{1}{|C_k|} \sum_{x_j \in C_k} d(x_i, x_j)
+$$
+
+Hence, the silhouette value is defined as 
+
+$$
+s(x_i) = \frac{b(x_i) - a(x_i)}{ max\{a(x_i), b(x_i)\}}  \text{,   if   } |C_k| > 1
+$$
+$$
+s(x_i) = 0  \text{,   if   } |C_k| = 1
+$$
+
+Figure \ref{sil} shows the silhouette score computed using the function \texttt{silhouette} from the package \texttt{cluster}. In this example, we use the Euclidean distance as a dissimilarity measure. Most of the samples are well classified, since their silhouette scores are above average (the red line). For all considered methods and especially for hierarchical clustering, most mis-classified samples belong to cluster 2 (negative silhouette score).
+
+\begin{scheme}
+\caption{\textbf{Silhouette score}}
+\label{sil}
+```{r sil, echo=F, warning = F, message = F, out.width='.49\\textwidth', fig.width=5, fig.height=5.5,fig.show='hold',fig.align='center'}
+
+
+fviz_silhouette(sil_km, print.summary = FALSE) +
+ggtitle("K-means")
+fviz_silhouette(sil_kmed, print.summary = FALSE) +
+ggtitle("K-medoids")
+fviz_silhouette(sil_gmm, print.summary = FALSE) +
+ggtitle("GMM")
+fviz_silhouette(sil_hc, print.summary = FALSE) +
+ggtitle("Hierarchical clustering")
+
+
+```
+\vspace{-0.7em}
+\end{scheme}
+
+\newpage
+
+# References
+
+Dunn, J. C. (1974). *Well-separated clusters and optimal fuzzy partitions*. Journal of cybernetics, 4(1), 95-104.
+
+Friedman, J., Hastie, T., & Tibshirani, R. (2001). *The elements of statistical learning (Vol. 1, No. 10)*. New York: Springer series in statistics.
+
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). *An introduction to statistical learning (Vol. 112, p. 18)*. New York: springer.
+
+Harrison Jr, D., & Rubinfeld, D. L. (1978). *Hedonic housing prices and the demand for clean air*. Journal of environmental economics and management, 5(1), 81-102.
+
+Kaufman, L., Rousseeuw, P.J. (1987). *Clustering by means of medoids*. In: Statistical Data Analysis
+Based on the L1 Norm and Related Methods, Y. Dodge (ed.), North-Holland, 405-416.
+
+Kaufman, L., Rousseeuw, P.J. (1990). *Finding Groups in Data: An Introduction to Cluster Analysis*.
+John Wiley & Sons.
+
+Rentzmann, S., & Wuthrich, M. V. (2019). *Unsupervised Learning: What is a Sports Car?*. Available at SSRN 3439358.
+
+Rousseeuw, P. J. (1987). *Silhouettes: a graphical aid to the interpretation and validation of cluster analysis*. Journal of computational and applied mathematics, 20, 53-65.
+
+Schubert, E., & Rousseeuw, P. J. (2019, October). *Faster k-medoids clustering: improving the PAM, CLARA, and CLARANS algorithms*. In International conference on similarity search and applications (pp. 171-187). Springer, Cham.
