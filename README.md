@@ -9,4 +9,10 @@ Implement and compare different clustering algorithms:
 
 The selected algorithms are applied to the Boston Housing dataset (1978)
 
-The R code for the implementation is in "clustering.R" and the results are detailed in "report_clustering.pdf"
+The repsitory contains: 
+
+* The R script for the computations in ```r_script```
+* The Rmarkdown script for generating the report in ```report```
+* The Dockerfile for ensuring reproducibility of results 
+
+See https://github.com/vettorefburana/Run-Rstudio-Server-from-Docker for instructions on how to run the Docker container. 
