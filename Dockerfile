@@ -19,7 +19,7 @@ RUN apt-get clean all && \
   apt-get purge && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
  
-RUN Rscript -e "install.packages(c('forecast', 'lubridate', 'ggplot2', 'xts', 'zoo', 'ggcorrplot', 'kableExtra'));"
+RUN Rscript -e "install.packages(c('forecast', 'lubridate', 'ggplot2', 'xts', 'zoo', 'ggcorrplot', 'kableExtra', 'keras', 'NeuralNetTools', 'fcp', 'psych', 'Hmisc', 'cluster', 'mclust', 'MASS'));"
 
 RUN tlmgr update --self --all && \
   tlmgr install fancyhdr multirow listings fancyvrb  \
