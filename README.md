@@ -1,13 +1,13 @@
 # Clustering-Algorithms
 
-Implement and compare different clustering algorithms: 
+Clustering algorithms are used for partitioning a dataset into a certain number of homogenous clusters in an unsupervised manner. The R script in this repository implements and compares different centroid-based, distribution-based and hierarchial clustering algorithms:
 
 * K-means
 * K-medoids
 * Gaussian Mixture Models
 * Agglomerative hierarchical clustering
 
-The selected algorithms are applied to the Boston Housing dataset (1978)
+The selected algorithms are applied to data on the Boston real estate market. The homogeneity of the clusters is measured using the Euclidean distance as the dissimilarity function to be minimized in order to find the optimal partition. 
 
 The repsitory contains: 
 
