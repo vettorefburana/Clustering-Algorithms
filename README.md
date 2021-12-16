@@ -7,7 +7,7 @@ Clustering algorithms are used for partitioning a dataset into a certain number 
 * Gaussian Mixture Models
 * Agglomerative hierarchical clustering
 
-The selected algorithms are applied to data of the Boston real estate market. The homogeneity of the clusters is measured using the Euclidean distance as the dissimilarity function to be minimized in order to find the optimal partition. 
+The selected algorithms are applied to data of the Boston real estate market. The homogeneity of the clusters is measured using the Euclidean distance as the dissimilarity function to be minimized in order to find the optimal partitions. 
 
 The repsitory contains: 
 
