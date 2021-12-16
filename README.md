@@ -13,6 +13,6 @@ The repsitory contains:
 
 * The R script for the computations in ```r_script```
 * The Rmarkdown script for generating the report in ```report```
-* The Dockerfile for running RStudio Server to ensure reproducibility of results 
+* The Dockerfile to ensure reproducibility of results 
 
 See https://github.com/vettorefburana/Run-Rstudio-Server-from-Docker for instructions on how to run the Docker container. 
