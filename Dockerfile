@@ -2,8 +2,8 @@ FROM rocker/verse:4.1.0
 
 RUN apt-get clean all && \
   apt-get -o Acquire::Max-FutureTime=86400 update && \
-  apt-get -o Acquire::Max-FutureTime=86400 upgrade -y && \
-  apt-get -o Acquire::Max-FutureTime=86400 install -y \
+  apt-get upgrade -y && \
+  apt-get install -y \
     libhdf5-dev \
     libcurl4-gnutls-dev \
     libssl-dev \
@@ -18,8 +18,12 @@ RUN apt-get clean all && \
   && apt-get clean all && \
   apt-get purge && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ADD requirements.r .
+
+RUN mkdir -p /R
  
-RUN Rscript -e "install.packages(c('forecast', 'lubridate', 'ggplot2', 'xts', 'zoo', 'ggcorrplot', 'kableExtra', 'keras', 'NeuralNetTools', 'fcp', 'psych', 'Hmisc', 'cluster', 'mclust', 'MASS'));"
+RUN Rscript requirements.r
 
 RUN tlmgr update --self --all && \
   tlmgr install fancyhdr multirow listings fancyvrb  \
@@ -33,5 +37,6 @@ RUN tlmgr update --self --all && \
   fontspec tipa unicode-math xunicode bbm-macros wrapfig \ 
   kvoptions colortbl environ trimspaces mdwtools koma-script newfloat pdflscape 
 
-COPY .Rprofile /home/rstudio/
+COPY .Rprofile .
 
+#########CMD ["Rscript", "/R/render.R"]
