@@ -9,10 +9,8 @@ Clustering algorithms are used for partitioning a dataset into a certain number 
 
 The selected algorithms are applied to data of the Boston real estate market. The homogeneity of the clusters is measured using the Euclidean distance as the dissimilarity function to be minimized in order to find the optimal partitions. 
 
-The repsitory contains: 
-
-* The R script for the computations in ```r_script```
-* The Rmarkdown script for generating the report in ```report```
+The repository contains: 
+* The R script for the computations the  Rmarkdown script for generating the report in ```R``` 
 * The Dockerfile to ensure reproducibility of results 
 
 See https://github.com/vettorefburana/Run-Rstudio-Server-from-Docker for instructions on how to run the Docker container. 
